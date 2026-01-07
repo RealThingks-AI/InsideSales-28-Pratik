@@ -5,6 +5,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { RelatedTasksSection } from "@/components/shared/RelatedTasksSection";
+import { TaskModal } from "@/components/tasks/TaskModal";
+import { Task, CreateTaskData } from "@/types/task";
+import { useTasks } from "@/hooks/useTasks";
 import { 
   Building2, 
   Globe, 
@@ -52,29 +55,72 @@ interface AccountDetailModalProps {
 }
 
 export const AccountDetailModal = ({ open, onOpenChange, account, onUpdate, onEdit, defaultTab = "overview" }: AccountDetailModalProps) => {
+  const { createTask, updateTask } = useTasks();
   const [showActivityLog, setShowActivityLog] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
   const [activeTab, setActiveTab] = useState(defaultTab);
-  const [isTemporarilyHidden, setIsTemporarilyHidden] = useState(false);
+  
+  // Task modal state - lifted to this level so TaskModal is a sibling, not child
+  const [taskModalOpen, setTaskModalOpen] = useState(false);
+  const [editingTask, setEditingTask] = useState<Task | null>(null);
+  const [tasksRefreshToken, setTasksRefreshToken] = useState(0);
   
   // Update activeTab when defaultTab prop changes
   useEffect(() => {
     setActiveTab(defaultTab);
   }, [defaultTab, open]);
 
-  // Handle task modal open - close this modal temporarily
-  const handleTaskModalOpen = () => {
-    setIsTemporarilyHidden(true);
-    onOpenChange(false);
+  // Handle request to create task - close account modal, open task modal
+  const handleRequestCreateTask = () => {
+    setEditingTask(null);
+    onOpenChange(false); // Close account modal first
+    requestAnimationFrame(() => {
+      setTaskModalOpen(true); // Then open task modal
+    });
   };
 
-  // Handle task modal close - reopen this modal
+  // Handle request to edit task - close account modal, open task modal with task
+  const handleRequestEditTask = (task: Task) => {
+    setEditingTask(task);
+    onOpenChange(false); // Close account modal first
+    requestAnimationFrame(() => {
+      setTaskModalOpen(true); // Then open task modal
+    });
+  };
+
+  // Handle task modal close - reopen account modal
   const handleTaskModalClose = () => {
-    setIsTemporarilyHidden(false);
+    setTaskModalOpen(false);
+    setEditingTask(null);
+    setTasksRefreshToken(prev => prev + 1); // Trigger tasks list refresh
     setTimeout(() => {
       onOpenChange(true);
       setActiveTab('tasks'); // Return to tasks tab
     }, 100);
+  };
+
+  // Handle task submit
+  const handleTaskSubmit = async (data: CreateTaskData) => {
+    if (!account) return null;
+    const taskData: CreateTaskData = {
+      ...data,
+      module_type: 'accounts',
+      account_id: account.id,
+    };
+    const result = await createTask(taskData);
+    if (result) {
+      handleTaskModalClose();
+    }
+    return result;
+  };
+
+  // Handle task update
+  const handleTaskUpdate = async (taskId: string, data: Partial<Task>, original: Task) => {
+    const result = await updateTask(taskId, data, original);
+    if (result) {
+      handleTaskModalClose();
+    }
+    return result;
   };
 
   if (!account) return null;
@@ -233,8 +279,9 @@ export const AccountDetailModal = ({ open, onOpenChange, account, onUpdate, onEd
                 moduleType="accounts"
                 recordId={account.id}
                 recordName={account.company_name}
-                onTaskModalOpen={handleTaskModalOpen}
-                onTaskModalClose={handleTaskModalClose}
+                refreshToken={tasksRefreshToken}
+                onRequestCreateTask={handleRequestCreateTask}
+                onRequestEditTask={handleRequestEditTask}
               />
             </TabsContent>
 
@@ -256,11 +303,31 @@ export const AccountDetailModal = ({ open, onOpenChange, account, onUpdate, onEd
         </DialogContent>
       </Dialog>
 
+      {/* Activity Log Modal */}
       <ActivityLogModal
         open={showActivityLog}
         onOpenChange={setShowActivityLog}
         accountId={account.id}
         onSuccess={handleActivityLogged}
+      />
+
+      {/* Task Modal - rendered as sibling so it doesn't unmount when account modal closes */}
+      <TaskModal
+        open={taskModalOpen}
+        onOpenChange={(open) => {
+          if (!open) {
+            handleTaskModalClose();
+          }
+        }}
+        task={editingTask}
+        onSubmit={handleTaskSubmit}
+        onUpdate={handleTaskUpdate}
+        context={{ 
+          module: 'accounts', 
+          recordId: account.id, 
+          recordName: account.company_name, 
+          locked: true 
+        }}
       />
     </>
   );
