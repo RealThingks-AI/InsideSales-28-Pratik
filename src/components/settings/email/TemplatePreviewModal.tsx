@@ -84,9 +84,10 @@ const TemplatePreviewModal = ({ open, onOpenChange, template }: TemplatePreviewM
 
               {/* Email Body */}
               <ScrollArea className="h-[300px]">
-                <div className="p-4 whitespace-pre-wrap text-sm">
-                  {renderedBody}
-                </div>
+                <div 
+                  className="p-4 text-sm prose prose-sm max-w-none dark:prose-invert [&_p]:mb-2 [&_ul]:list-disc [&_ul]:ml-4 [&_li]:mb-1 [&_br]:block"
+                  dangerouslySetInnerHTML={{ __html: renderedBody }}
+                />
               </ScrollArea>
             </div>
           </TabsContent>
